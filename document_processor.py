@@ -1,24 +1,39 @@
 import os
+from pathlib import Path
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+import streamlit as st
 
-# Configuration paths
-CHROMA_PERSIST_DIR = "chroma_db"
-UPLOAD_DIR = "uploaded_documents"
 
-# Ensure the upload directory exists
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+@st.cache_resource(show_spinner=False)
+def get_embeddings() -> HuggingFaceEmbeddings:
+    return HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+        encode_kwargs={"batch_size": 64},
+    )
 
-def save_uploaded_file(uploaded_file):
-    """Saves a file uploaded via Streamlit to the local disk."""
-    file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+def save_uploaded_file(uploaded_file, upload_dir: str | Path) -> str:
+    """Save an upload inside the current session's private directory."""
+    upload_path = Path(upload_dir)
+    upload_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    safe_name = Path(uploaded_file.name.replace("\\", "/")).name
+    if not safe_name or safe_name in {".", ".."}:
+        raise ValueError("The uploaded file has an invalid name.")
+
+    file_path = upload_path / safe_name
     with open(file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
-    return file_path
+    file_path.chmod(0o600)
+    return str(file_path)
 
-def process_and_index_document(file_path: str, original_file_name: str):
+
+def process_and_index_document(
+    file_path: str,
+    original_file_name: str,
+    persist_directory: str | Path,
+) -> int:
 
     """Loads a document, splits it into chunks, and stores it in ChromaDB."""
     
@@ -51,29 +66,37 @@ def process_and_index_document(file_path: str, original_file_name: str):
 
     # 3. Initialize the local HuggingFace embedding model
     # "all-MiniLM-L6-v2" is a fast, lightweight model perfect for local RAG
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embeddings = get_embeddings()
 
-    # 4. Generate embeddings and store them in a persistent ChromaDB instance
-    Chroma.from_documents(
-        documents=chunks,
-        embedding=embeddings,
-        persist_directory=CHROMA_PERSIST_DIR
+    # Keep re-uploads of the same filename from leaving stale chunks behind.
+    vector_db = Chroma(
+        persist_directory=str(persist_directory),
+        embedding_function=embeddings,
     )
+    vector_db._collection.delete(where={"source": original_file_name})
+    if chunks:
+        vector_db.add_documents(chunks)
     
     return len(chunks)
 
 
-def delete_document(filename: str):
-    """Deletes the file from disk and removes its vectors from ChromaDB."""
-    # 1. Delete file from local server folder
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
+def delete_document(
+    filename: str,
+    upload_dir: str | Path,
+    persist_directory: str | Path,
+) -> None:
+    """Delete one document and its vectors from the current session."""
+    safe_name = Path(filename.replace("\\", "/")).name
+    if safe_name != filename:
+        raise ValueError("Invalid document name.")
 
-    # 2. Delete vectors from ChromaDB matching the source filename
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    file_path = Path(upload_dir) / safe_name
+    if file_path.is_file():
+        file_path.unlink()
+
+    embeddings = get_embeddings()
     vector_db = Chroma(
-        persist_directory=CHROMA_PERSIST_DIR,
-        embedding_function=embeddings
+        persist_directory=str(persist_directory),
+        embedding_function=embeddings,
     )
     vector_db._collection.delete(where={"source": filename})
