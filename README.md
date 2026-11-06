@@ -1,4 +1,4 @@
-# Enterprise Knowledge Base RAG Search & Chat System
+# Information Retrieval RAG System
 ## Administrator Operations & Deployment Guide
 
 This repository provides an enterprise-grade Retrieval-Augmented Generation (RAG) platform. It features single-folder document management, incremental manifest-based vector caching, dynamic multi-process Ollama model discovery, document structural intelligence, and verified citation tracking.
@@ -155,24 +155,6 @@ All key parameters are centralized in [`config.py`](file:///Users/unixmaster/ta_
 - **Verified Sources Shelf:** Displays citations matching the calibrated similarity threshold with excerpt preview drawers.
 - **Clean ChatGPT-Style Citations:** Outputs clean in-text markers (`[Source 1]`, `[Source 2]`) linked to verified sources.
 - **Document Structure & Overview:** Automatically answers global document questions (e.g., total questions, titles, deadlines) via precomputed structural summaries.
-
----
-
-## 7. Verification & Testing
-
-Two automated test suites verify system health:
-
-### 7.1 End-to-End Pipeline & Retrieval Test
-Verifies Ollama connectivity, document structural intelligence, document-level factual inferences, excerpt retrieval, and out-of-domain rejection:
-```bash
-./searchrag/bin/python test_rag_pipeline.py
-```
-
-### 7.2 Multi-Process Discovery & Crash Recovery Test
-Verifies multi-port probing, dead process exclusion, process death simulation, and request routing:
-```bash
-./searchrag/bin/python test_multi_process_ollama.py
-```
 
 ---
 
